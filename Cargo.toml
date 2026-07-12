@@ -1,0 +1,13 @@
+[package]
+name = "baradir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hyper = "1.10.1"
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-macros = "2.7.0"
+wasmtime = "46.0.1"
+wasmtime-wasi = "46.0.1"
+wasmtime-wasi-http = "46.0.1"
+wiggle = "46.0.1"
