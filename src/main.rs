@@ -2,6 +2,7 @@ mod db;
 use baradir::Config;
 use baradir::run;
 use clap::Parser;
+use db::get_db_conn;
 use wasmtime::Result;
 
 #[derive(Parser, Debug)]
@@ -15,6 +16,7 @@ pub struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let config = Config::new(args.port);
+    let conn = get_db_conn()?;
+    let config = Config::new(args.port, conn);
     run(config).await
 }

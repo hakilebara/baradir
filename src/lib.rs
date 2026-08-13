@@ -2,8 +2,9 @@ mod http;
 
 use http::{MyClientState, MyServer};
 use hyper::server::conn::http1;
+use rusqlite::Connection;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Engine, Result};
@@ -12,11 +13,12 @@ use wasmtime_wasi_http::p2::bindings::ProxyPre;
 
 pub struct Config {
     tcp_port: u16,
+    conn: Connection,
 }
 
 impl Config {
-    pub fn new(tcp_port: u16) -> Config {
-        Config { tcp_port }
+    pub fn new(tcp_port: u16, conn: Connection) -> Config {
+        Config { tcp_port, conn }
     }
 }
 
@@ -61,7 +63,10 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     // Prepare our server state and start listening for connections.
-    let server = Arc::new(MyServer { apps });
+    let server = Arc::new(MyServer {
+        apps,
+        conn: Arc::new(Mutex::new(config.conn)),
+    });
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.tcp_port)).await?;
     println!("Listening on {}", listener.local_addr()?);
 

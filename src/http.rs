@@ -1,5 +1,7 @@
 use crate::App;
+use rusqlite::Connection;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use wasmtime::bail;
 use wasmtime::component::ResourceTable;
 use wasmtime::{Result, Store};
@@ -13,6 +15,7 @@ use wasmtime_wasi_http::{
 
 pub struct MyServer<'a> {
     pub apps: HashMap<&'a str, App<'a>>,
+    pub conn: Arc<Mutex<Connection>>,
 }
 
 impl MyServer<'_> {
