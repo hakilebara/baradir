@@ -1,4 +1,5 @@
 mod http;
+mod slug;
 
 use http::{MyClientState, MyServer};
 use hyper::server::conn::http1;
