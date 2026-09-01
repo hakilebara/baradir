@@ -43,7 +43,7 @@ pub async fn run(config: Config) -> Result<()> {
         (
             "manager",
             App {
-                filepath: "apps/manager.wasm",
+                filepath: "target/wasm32-wasip2/release/manager.wasm",
                 pre: None,
             },
         ),
