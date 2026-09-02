@@ -1,3 +1,4 @@
+use maud::html;
 use wstd::http::{Body, Request, Response, Result, StatusCode};
 
 #[wstd::http_server]
@@ -9,7 +10,11 @@ async fn main(req: Request<Body>) -> Result<Response<Body>> {
 }
 
 async fn home(_req: Request<Body>) -> Result<Response<Body>> {
-    Ok(Response::new("I AM THE MANAGER!!!\n".into()))
+    let message = "I AM THE MANAGER\n".to_string();
+    let markup = html! {
+        h1 { (message) "!!!" }
+    };
+    Ok(Response::new(markup.into_string().into()))
 }
 
 async fn not_found(_req: Request<Body>) -> Result<Response<Body>> {
