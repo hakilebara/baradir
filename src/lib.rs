@@ -36,7 +36,7 @@ pub async fn run(config: Config) -> Result<()> {
         (
             "hello",
             App {
-                filepath: "apps/hello-http.wasm",
+                filepath: "target/wasm32-wasip2/release/hello.wasm",
                 pre: None,
             },
         ),
