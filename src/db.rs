@@ -1,4 +1,3 @@
-// use rusqlite::{params, Connection, Error, Result};
 use rusqlite::{Connection, Error};
 
 const SCHEMA: &str = "PRAGMA foreign_keys = ON;
@@ -11,7 +10,7 @@ CREATE TABLE IF NOT EXISTS environment (
 CREATE TABLE IF NOT EXISTS app (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    filepath TEXT NOT NULL
+    filepath TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS environment_app (
@@ -21,7 +20,11 @@ CREATE TABLE IF NOT EXISTS environment_app (
     FOREIGN KEY (environment_id) REFERENCES environment(id) ON DELETE CASCADE,
     FOREIGN KEY (app_id) REFERENCES app(id) ON DELETE CASCADE,
     UNIQUE (environment_id, app_id)
-);";
+);
+
+INSERT OR REPLACE INTO app (name, filepath) VALUES ('hello', 'target/wasm32-wasip2/release/hello.wasm');
+INSERT OR REPLACE INTO app (name, filepath) VALUES ('manager', 'target/wasm32-wasip2/release/manager.wasm');
+";
 
 pub fn get_db_conn() -> Result<Connection, Error> {
     let conn = Connection::open("db.sqlite")?;

@@ -23,8 +23,9 @@ impl Config {
     }
 }
 
-pub struct App<'a> {
-    pub filepath: &'a str,
+pub struct App {
+    pub name: String,
+    pub filepath: String,
     pub pre: Option<ProxyPre<MyClientState>>,
 }
 
@@ -32,35 +33,35 @@ pub async fn run(config: Config) -> Result<()> {
     // Prepare the `Engine` for Wasmtime
     let engine = Engine::default();
 
-    let mut apps = HashMap::from([
-        (
-            "hello",
-            App {
-                filepath: "target/wasm32-wasip2/release/hello.wasm",
-                pre: None,
-            },
-        ),
-        (
-            "manager",
-            App {
-                filepath: "target/wasm32-wasip2/release/manager.wasm",
-                pre: None,
-            },
-        ),
-    ]);
+    let mut apps = HashMap::new();
 
-    // Compile the component on the command line to machine code
-    for (_name, app) in &mut apps {
-        let component = Component::from_file(&engine, app.filepath)?;
+    {
+        let mut stmt = config.conn.prepare("SELECT id, name, filepath FROM app")?;
+        let app_iter = stmt.query_map([], |row| {
+            Ok(App {
+                name: row.get(1)?,
+                filepath: row.get(2)?,
+                pre: None,
+            })
+        })?;
 
-        // Prepare the `ProxyPre` which is a pre-instantiated version of the
-        // component. This will make per-request instantiation
-        // much quicker.
-        let mut linker = Linker::new(&engine);
-        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
-        wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
-        let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
-        app.pre = Some(pre);
+        for app in app_iter {
+            let mut app = app?;
+
+            // Compile the component on the command line to machine code
+            let component = Component::from_file(&engine, app.filepath.clone())?;
+
+            // Prepare the `ProxyPre` which is a pre-instantiated version of the
+            // component. This will make per-request instantiation
+            // much quicker.
+            let mut linker = Linker::new(&engine);
+            wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+            wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
+            let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
+            app.pre = Some(pre);
+
+            apps.insert(app.name.clone(), app);
+        }
     }
 
     // Prepare our server state and start listening for connections.

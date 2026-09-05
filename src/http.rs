@@ -1,4 +1,6 @@
 use crate::App;
+use crate::slug::generate_slug;
+use http_body_util::BodyExt;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -13,20 +15,60 @@ use wasmtime_wasi_http::{
     p2::{WasiHttpCtxView, WasiHttpView},
 };
 
-pub struct MyServer<'a> {
-    pub apps: HashMap<&'a str, App<'a>>,
+pub struct MyServer {
+    pub apps: HashMap<String, App>,
     pub conn: Arc<Mutex<Connection>>,
 }
 
-impl MyServer<'_> {
+impl MyServer {
     pub async fn handle_request(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
     ) -> Result<hyper::Response<HyperOutgoingBody>> {
         let raw_host = req.headers().get("host").unwrap().to_str().unwrap();
         let v: Vec<_> = raw_host.split('.').take(2).collect();
+
+        let host = raw_host.split(":").next().unwrap();
+
+        // TODO: refactor hard coded domain
+        let base = "baradir.local";
+        let is_root = host == base;
+
         let app_name = v[0];
         let _env = v[1];
+
+        /*
+         * If a request targets the naked domain of baradir
+         * we create a new environment and redirect the user to it
+         */
+        if is_root {
+            // Create new environment
+            let domain_slug = generate_slug();
+            self.conn.lock().unwrap().execute(
+                "INSERT INTO environment (slug) VALUES (?1)",
+                ((&domain_slug),),
+            )?;
+            // let row_id = self.conn.lock().unwrap().last_insert_rowid();
+
+            // TODO: add necessary entries in the environment_apps join table
+            // for a 'anagerm app and a 'hello' app
+
+            // redirect to the subdomain of the newly created environment
+            println!("redirect to mgr.{domain_slug}.baradir.local");
+            return Ok(hyper::Response::builder()
+                // TODO: replace "location" and the return code with
+                // the constants provided by the hyper library
+                .header(
+                    "Location",
+                    format!("http://manager.{domain_slug}.baradir.local:8080"),
+                )
+                .status(302)
+                .body(
+                    http_body_util::Empty::<bytes::Bytes>::new()
+                        .map_err(|_| unreachable!("infaillable"))
+                        .boxed_unsync(),
+                )?);
+        }
 
         if !self.apps.contains_key(app_name) {
             panic!("APP not found")
