@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["apps/manager"]
+members = ["apps/manager", "apps/hello"]
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
