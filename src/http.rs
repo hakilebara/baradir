@@ -1,7 +1,7 @@
 use crate::App;
 use crate::slug::generate_slug;
 use http_body_util::BodyExt;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wasmtime::bail;
@@ -35,7 +35,7 @@ impl MyServer {
         let is_root = host == base;
 
         let app_name = v[0];
-        let _env = v[1];
+        let env_slug = v[1];
 
         /*
          * If a request targets the naked domain of baradir
@@ -44,14 +44,36 @@ impl MyServer {
         if is_root {
             // Create new environment
             let domain_slug = generate_slug();
-            self.conn.lock().unwrap().execute(
-                "INSERT INTO environment (slug) VALUES (?1)",
-                ((&domain_slug),),
-            )?;
-            // let row_id = self.conn.lock().unwrap().last_insert_rowid();
+            let mut conn = self.conn.lock().unwrap();
+            let tx = conn.transaction()?;
 
-            // TODO: add necessary entries in the environment_apps join table
-            // for a 'anagerm app and a 'hello' app
+            tx.execute(
+                "INSERT INTO environment (slug) VALUES (?1)",
+                params![domain_slug],
+            )?;
+            let env_id = tx.last_insert_rowid();
+
+            let manager_id: i64 =
+                tx.query_row("SELECT id FROM app WHERE name = 'manager'", [], |row| {
+                    row.get(0)
+                })?;
+
+            let hello_id: i64 =
+                tx.query_row("SELECT id FROM app WHERE name = 'hello'", [], |row| {
+                    row.get(0)
+                })?;
+
+            tx.execute(
+                "INSERT INTO environment_app (environment_id, app_id) VALUES (?1, ?2)",
+                params![env_id, manager_id],
+            )?;
+
+            tx.execute(
+                "INSERT INTO environment_app (environment_id, app_id) VALUES (?1, ?2)",
+                params![env_id, hello_id],
+            )?;
+
+            let _ = tx.commit();
 
             // redirect to the subdomain of the newly created environment
             println!("redirect to mgr.{domain_slug}.baradir.local");
@@ -70,7 +92,23 @@ impl MyServer {
                 )?);
         }
 
-        if !self.apps.contains_key(app_name) {
+        // I have a env name and an app name from the HTTP host
+        // I want to check that I can find this env/app relation in the environment_app table
+        let exists: bool = {
+            let conn = self.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT * FROM environment_app ea
+                JOIN environment e ON e.id = ea.environment_id
+                JOIN app a ON a.id = ea.app_id
+                WHERE e.slug = ?1 AND a.name = ?2",
+                params![env_slug, app_name],
+                |_| Ok(()),
+            )
+            .is_ok()
+        };
+
+        // TODO: return a 404
+        if !exists {
             panic!("APP not found")
         }
 

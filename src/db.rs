@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS environment_app (
     UNIQUE (environment_id, app_id)
 );
 
-INSERT OR REPLACE INTO app (name, filepath) VALUES ('hello', 'target/wasm32-wasip2/release/hello.wasm');
-INSERT OR REPLACE INTO app (name, filepath) VALUES ('manager', 'target/wasm32-wasip2/release/manager.wasm');
+INSERT OR IGNORE INTO app (name, filepath) VALUES ('hello', 'target/wasm32-wasip2/release/hello.wasm');
+INSERT OR IGNORE INTO app (name, filepath) VALUES ('manager', 'target/wasm32-wasip2/release/manager.wasm');
 ";
 
 pub fn get_db_conn() -> Result<Connection, Error> {
