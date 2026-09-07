@@ -27,7 +27,7 @@ INSERT OR IGNORE INTO app (name, filepath) VALUES ('manager', 'target/wasm32-was
 ";
 
 pub fn get_db_conn() -> Result<Connection, Error> {
-    let conn = Connection::open("db.sqlite")?;
+    let conn = Connection::open("./data/db.sqlite")?;
     conn.execute_batch(SCHEMA)?;
     Ok(conn)
 }
