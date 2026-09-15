@@ -1,5 +1,6 @@
 mod http;
 mod slug;
+mod wit;
 
 use http::{MyClientState, MyServer};
 use hyper::server::conn::http1;
@@ -7,7 +8,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
-use wasmtime::component::{Component, Linker};
+use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Engine, Result};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
@@ -15,11 +16,16 @@ use wasmtime_wasi_http::p2::bindings::ProxyPre;
 pub struct Config {
     tcp_port: u16,
     conn: Connection,
+    env_folder: String,
 }
 
 impl Config {
-    pub fn new(tcp_port: u16, conn: Connection) -> Config {
-        Config { tcp_port, conn }
+    pub fn new(tcp_port: u16, conn: Connection, env_folder: String) -> Config {
+        Config {
+            tcp_port,
+            conn,
+            env_folder,
+        }
     }
 }
 
@@ -33,7 +39,8 @@ pub async fn run(config: Config) -> Result<()> {
     // Prepare the `Engine` for Wasmtime
     let engine = Engine::default();
 
-    let mut apps = HashMap::new();
+    // let mut apps = HashMap::new();
+    let apps = Arc::new(Mutex::new(HashMap::new()));
 
     {
         let mut stmt = config.conn.prepare("SELECT id, name, filepath FROM app")?;
@@ -57,10 +64,17 @@ pub async fn run(config: Config) -> Result<()> {
             let mut linker = Linker::new(&engine);
             wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
             wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
+
+            // confusing syntax to say the least
+            crate::wit::bindings::ManagerApp::add_to_linker::<MyClientState, HasSelf<MyClientState>>(
+                &mut linker,
+                |state| state,
+            )?;
+
             let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
             app.pre = Some(pre);
 
-            apps.insert(app.name.clone(), app);
+            apps.lock().unwrap().insert(app.name.clone(), app);
         }
     }
 
@@ -68,6 +82,7 @@ pub async fn run(config: Config) -> Result<()> {
     let server = Arc::new(MyServer {
         apps,
         conn: Arc::new(Mutex::new(config.conn)),
+        engine: engine.clone(),
     });
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.tcp_port)).await?;
     println!("Listening on {}", listener.local_addr()?);
