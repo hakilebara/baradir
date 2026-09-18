@@ -18,18 +18,33 @@ async fn home() -> Markup {
     let apps: Vec<String> = list_apps();
     let domain: String = get_domain();
     html! {
-        h1 { "Manager App" }
-        ul {
-            @for name in &apps {
-                li {
-                    a href={ "http://" (name) "." (domain) } {(name)}
-                }
+        head {
+            style {
+                "
+                    .container {
+                        display: grid;
+                        place-content: center;
+                        height: 90vh;
+                    }
+                "
             }
         }
-        form method="post" enctype="multipart/form-data" {
-            input type="text" name="name" placeholder="App name" required;
-            input type="file" name="file" accept=".wasm";
-            input type="submit" value="Upload";
+        div class="container" {
+            h1 { "Manager" }
+            h2 { "Installed applications" }
+            ul {
+                @for name in &apps {
+                    li {
+                        a href={ "http://" (name) "." (domain) } {(name)}
+                    }
+                }
+            }
+            h2 { "Upload a new application" }
+            form method="post" enctype="multipart/form-data" {
+                input type="text" name="name" placeholder="App name" required;
+                input type="file" name="file" accept=".wasm";
+                input type="submit" value="Upload" style="display: block;";
+            }
         }
     }
 }
