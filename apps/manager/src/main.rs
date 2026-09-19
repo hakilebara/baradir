@@ -18,32 +18,58 @@ async fn home() -> Markup {
     let apps: Vec<String> = list_apps();
     let domain: String = get_domain();
     html! {
-        head {
-            style {
-                "
-                    .container {
+            head {
+                style {
+                    "
+                    html, body {
+                        height: 100%;
+                        margin: 0;
+                    }
+                    body {
+                        font-family: sans-serif;
+                    }
+                    header {
+                        background-color: #fff;
+                        padding: 20px;
+                    }
+                    body{
+                        background-color: #fff8f4;
+                    }
+                    main {
                         display: grid;
-                        place-content: center;
-                        height: 90vh;
+                        justify-content: center;
+                        padding: 8%;
+                    }
+                    h1 {
+                        margin: 0;
+                    }
+                    .container {
+
                     }
                 "
-            }
-        }
-        div class="container" {
-            h1 { "Manager" }
-            h2 { "Installed applications" }
-            ul {
-                @for name in &apps {
-                    li {
-                        a href={ "http://" (name) "." (domain) } {(name)}
-                    }
                 }
             }
-            h2 { "Upload a new application" }
-            form method="post" enctype="multipart/form-data" {
-                input type="text" name="name" placeholder="App name" required;
-                input type="file" name="file" accept=".wasm";
-                input type="submit" value="Upload" style="display: block;";
+
+            header {
+                h1 { "Baradir" }
+            }
+            main {
+                div class="container" {
+                    h2 { "Installed applications" }
+                    ul {
+                        @for name in &apps {
+                            li {
+                                a href={ "http://" (name) "." (domain) } {(name)}
+                            }
+                        }
+                    }
+                    h2 { "Upload a new application" }
+                    form method="post" enctype="multipart/form-data" {
+                        input type="text" name="name" placeholder="App name" required;
+                        input type="file" name="file" accept=".wasm";
+                        input type="submit" value="Upload" style="display: block;";
+                    }
+
             }
         }
     }
