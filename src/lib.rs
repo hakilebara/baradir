@@ -1,9 +1,11 @@
 mod http;
+mod runtime;
 mod slug;
 mod wit;
 
-use http::{MyClientState, MyServer};
+use http::InstanceState;
 use hyper::server::conn::http1;
+use runtime::Runtime;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -32,7 +34,7 @@ impl Config {
 pub struct App {
     pub name: String,
     pub filepath: String,
-    pub pre: Option<ProxyPre<MyClientState>>,
+    pub pre: Option<ProxyPre<InstanceState>>,
 }
 
 pub async fn run(config: Config) -> Result<()> {
@@ -66,7 +68,7 @@ pub async fn run(config: Config) -> Result<()> {
             wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
 
             // confusing syntax to say the least
-            crate::wit::bindings::ManagerApp::add_to_linker::<MyClientState, HasSelf<MyClientState>>(
+            crate::wit::bindings::ManagerApp::add_to_linker::<InstanceState, HasSelf<InstanceState>>(
                 &mut linker,
                 |state| state,
             )?;
@@ -79,7 +81,7 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     // Prepare our server state and start listening for connections.
-    let server = Arc::new(MyServer {
+    let runtime = Arc::new(Runtime {
         apps,
         conn: Arc::new(Mutex::new(config.conn)),
         engine: engine.clone(),
@@ -93,15 +95,15 @@ pub async fn run(config: Config) -> Result<()> {
         let (client, addr) = listener.accept().await?;
         println!("serving new client from {addr}");
 
-        let server = server.clone();
+        let runtime = runtime.clone();
         tokio::task::spawn(async move {
             if let Err(e) = http1::Builder::new()
                 .keep_alive(false)
                 .serve_connection(
                     TokioIo::new(client),
                     hyper::service::service_fn(move |req| {
-                        let server = server.clone();
-                        async move { server.handle_request(req).await }
+                        let runtime = runtime.clone();
+                        async move { runtime.handle_request(req).await }
                     }),
                 )
                 .await
