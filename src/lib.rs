@@ -17,15 +17,15 @@ use wasmtime_wasi_http::p2::bindings::ProxyPre;
 
 pub struct Config {
     tcp_port: u16,
-    conn: Connection,
+    base_domain: String,
     env_folder: String,
 }
 
 impl Config {
-    pub fn new(tcp_port: u16, conn: Connection, env_folder: String) -> Config {
+    pub fn new(tcp_port: u16, base_domain: String, env_folder: String) -> Config {
         Config {
             tcp_port,
-            conn,
+            base_domain,
             env_folder,
         }
     }
@@ -37,15 +37,13 @@ pub struct App {
     pub pre: Option<ProxyPre<InstanceState>>,
 }
 
-pub async fn run(config: Config) -> Result<()> {
-    // Prepare the `Engine` for Wasmtime
+pub async fn run(config: Config, conn: Connection) -> Result<()> {
     let engine = Engine::default();
 
-    // let mut apps = HashMap::new();
     let apps = Arc::new(Mutex::new(HashMap::new()));
 
     {
-        let mut stmt = config.conn.prepare("SELECT id, name, filepath FROM app")?;
+        let mut stmt = conn.prepare("SELECT id, name, filepath FROM app")?;
         let app_iter = stmt.query_map([], |row| {
             Ok(App {
                 name: row.get(1)?,
@@ -80,14 +78,16 @@ pub async fn run(config: Config) -> Result<()> {
         }
     }
 
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.tcp_port)).await?;
+    println!("Listening on {}", listener.local_addr()?);
+
     // Prepare our server state and start listening for connections.
     let runtime = Arc::new(Runtime {
         apps,
-        conn: Arc::new(Mutex::new(config.conn)),
+        config,
+        conn: Arc::new(Mutex::new(conn)),
         engine: engine.clone(),
     });
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.tcp_port)).await?;
-    println!("Listening on {}", listener.local_addr()?);
 
     loop {
         // Accept a TCP connection and serve all of its requests in a separate

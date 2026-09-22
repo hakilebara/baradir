@@ -14,12 +14,15 @@ pub struct Args {
     /// Root folder of environments
     #[arg(short, long, default_value_t = "./workspaces".to_string())]
     pub env_folder: String,
+    /// Base domain
+    #[arg(short, long, default_value_t = "baradir.localhost".to_string())]
+    pub base_domain: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+    let config = Config::new(args.port, args.base_domain, args.env_folder);
     let conn = get_db_conn()?;
-    let config = Config::new(args.port, conn, args.env_folder);
-    run(config).await
+    run(config, conn).await
 }

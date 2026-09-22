@@ -24,9 +24,7 @@ impl Runtime {
 
         let host = raw_host.split(":").next().unwrap();
 
-        // TODO: refactor hard coded domain
-        let base = "baradir.localhost";
-        let is_root = host == base;
+        let is_root = host == self.config.base_domain;
 
         let app_name = v[0];
         let env_slug = v[1];
@@ -70,13 +68,19 @@ impl Runtime {
             let _ = tx.commit();
 
             // redirect to the subdomain of the newly created environment
-            println!("redirect to mgr.{domain_slug}.baradir.localhost");
+            println!(
+                "redirect to mgr.{}.{}:{}",
+                domain_slug, self.config.base_domain, self.config.tcp_port
+            );
             return Ok(hyper::Response::builder()
                 // TODO: replace "location" and the return code with
                 // the constants provided by the hyper library
                 .header(
                     "Location",
-                    format!("http://manager.{domain_slug}.baradir.localhost:8080"),
+                    format!(
+                        "http://manager.{}.{}:{}",
+                        domain_slug, self.config.base_domain, self.config.tcp_port
+                    ),
                 )
                 .status(302)
                 .body(

@@ -1,10 +1,12 @@
 use crate::http::InstanceState;
 use crate::App;
+use crate::Config;
 use rusqlite::{params, Connection};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub struct Runtime {
+    pub config: Config,
     pub conn: Arc<Mutex<Connection>>,
     pub apps: Arc<Mutex<HashMap<String, App>>>,
     pub engine: wasmtime::Engine, // TODO: remove and use pre.engine()
@@ -21,7 +23,10 @@ impl Runtime {
     }
 
     pub fn get_domain(&self, env_slug: &str) -> String {
-        format!("{}.baradir.localhost:8080", env_slug)
+        format!(
+            "{}.{}:{}",
+            env_slug, self.config.base_domain, self.config.tcp_port
+        )
     }
 
     pub fn install_app_from_binary(
@@ -30,7 +35,7 @@ impl Runtime {
         env_slug: String,
         bytes: Vec<u8>,
     ) -> Result<String, ()> {
-        let folder_filepath = format!("./workspaces/{}/{}/", env_slug, name);
+        let folder_filepath = format!("./{}/{}/{}/", self.config.env_folder, env_slug, name);
         let wasm_filepath = format!("{}/{}.wasm", folder_filepath, name);
 
         std::fs::create_dir_all(folder_filepath).unwrap();
@@ -88,7 +93,10 @@ impl Runtime {
             },
         );
 
-        let url = format!("http://{}.{}.{}", name, env_slug, &"baradir.localhost:8080");
+        let url = format!(
+            "http://{}.{}.{}:{}",
+            name, env_slug, self.config.base_domain, self.config.tcp_port
+        );
 
         Ok(url)
     }
