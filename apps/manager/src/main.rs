@@ -14,6 +14,33 @@ fn main() -> Router {
     Router::new().route("/", get(home)).route("/", post(upload))
 }
 
+fn application_item(name: &str, url: &str) -> Markup {
+    html! {
+        style {
+            "
+                .card_container {
+                    display: block;
+                    padding: 16px;
+                    background-color: #fff;
+                    padding: 20px;
+                    margin-bottom: 20px;
+                    border-radius: 30px;
+                    transition: 200ms;
+                    color: black;
+                    text-decoration: none;
+                }
+
+                .card_container:hover {
+                    background-color: lightgrey;
+                }
+            "
+        }
+        a href={ (url) } class="card_container" {
+            (name)
+        }
+    }
+}
+
 async fn home() -> Markup {
     let apps: Vec<String> = list_apps();
     let domain: String = get_domain();
@@ -56,11 +83,10 @@ async fn home() -> Markup {
             main {
                 div class="container" {
                     h2 { "Installed applications" }
-                    ul {
+                    div class="application_list" {
                         @for name in &apps {
-                            li {
-                                a href={ "http://" (name) "." (domain) } {(name)}
-                            }
+                            @let url = format!("http://{}.{}", name, domain);
+                            (application_item(name, &url))
                         }
                     }
                     h2 { "Upload a new application" }
