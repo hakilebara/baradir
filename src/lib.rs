@@ -10,8 +10,8 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
-use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Engine, Result};
+use wasmtime::Engine;
+use wasmtime::component::{Component, HasSelf};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 
@@ -37,7 +37,7 @@ pub struct App {
     pub pre: Option<ProxyPre<InstanceState>>,
 }
 
-pub async fn run(config: Config, conn: Connection) -> Result<()> {
+pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
     let engine = Engine::default();
 
     let apps = Arc::new(Mutex::new(HashMap::new()));
@@ -61,9 +61,8 @@ pub async fn run(config: Config, conn: Connection) -> Result<()> {
             // Prepare the `ProxyPre` which is a pre-instantiated version of the
             // component. This will make per-request instantiation
             // much quicker.
-            let mut linker = Linker::new(&engine);
-            wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
-            wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
+
+            let mut linker = Runtime::build_linker(&engine)?;
 
             // confusing syntax to say the least
             crate::wit::bindings::ManagerApp::add_to_linker::<InstanceState, HasSelf<InstanceState>>(

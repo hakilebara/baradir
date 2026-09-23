@@ -3,7 +3,6 @@ use baradir::Config;
 use baradir::run;
 use clap::Parser;
 use db::get_db_conn;
-use wasmtime::Result;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -20,7 +19,7 @@ pub struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let config = Config::new(args.port, args.base_domain, args.env_folder);
     let conn = get_db_conn()?;

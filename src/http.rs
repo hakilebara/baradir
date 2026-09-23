@@ -196,9 +196,10 @@ impl crate::wit::bindings::ManagerAppImports for InstanceState {
         self.runtime.get_domain(&self.env_slug)
     }
 
-    fn install_app_from_binary(&mut self, name: String, bytes: Vec<u8>) -> Result<String, ()> {
+    fn install_app_from_binary(&mut self, name: String, bytes: Vec<u8>) -> Result<String, String> {
         self.runtime
             .install_app_from_binary(name, self.env_slug.clone(), bytes)
+            .map_err(|e| e.to_string())
     }
 }
 

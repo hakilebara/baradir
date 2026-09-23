@@ -3,5 +3,5 @@ package baradir:manager;
 world manager-app {
   import list-apps: func() -> list<string>;
   import get-domain: func() -> string;
-  import install-app-from-binary: func(name: string, bytes: list<u8>) -> result<string>;
+  import install-app-from-binary: func(name: string, bytes: list<u8>) -> result<string, string>;
 }
