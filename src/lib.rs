@@ -23,6 +23,12 @@ pub struct Config {
     env_folder: String,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum Access {
+    Public,
+    Private,
+}
+
 impl Config {
     pub fn new(
         public_addr: String,
@@ -37,6 +43,16 @@ impl Config {
             .ok_or_else(|| {
                 anyhow::anyhow!("invalid public address `{public_addr}`: expected host:port")
             })?;
+
+        if let Some(addr) = &private_addr {
+            addr.rsplit(':')
+                .next()
+                .and_then(|port| port.parse::<u16>().ok())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("invalid private address `{addr}`: expected host:port")
+                })?;
+        }
+
         Ok(Config {
             public_addr,
             private_addr,
@@ -93,22 +109,47 @@ pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
         }
     }
 
-    let listener = TcpListener::bind(&config.public_addr).await?;
+    let private_listener = match &config.private_addr {
+        Some(addr) => Some(
+            TcpListener::bind(addr)
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to bind private socket {addr}: {e}"))?,
+        ),
+        None => None,
+    };
+
+    let listener = TcpListener::bind(&config.public_addr)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to bind public socket {}: {e}", config.public_addr))?;
     println!("Listening on {}", listener.local_addr()?);
+
+    if let Some(pl) = &private_listener {
+        println!("Private socket listening on {}", pl.local_addr()?);
+    }
 
     // Prepare our server state and start listening for connections.
     let runtime = Arc::new(Runtime {
         apps,
-        config,
+        config: config,
         conn: Arc::new(Mutex::new(conn)),
         engine: engine.clone(),
     });
 
+    match private_listener {
+        Some(private_listener) => tokio::select! {
+            res = serve(listener, runtime.clone(), Access::Public) => res,
+            res = serve(private_listener, runtime, Access::Private) => res,
+        },
+        None => serve(listener, runtime, Access::Public).await,
+    }
+}
+
+async fn serve(listener: TcpListener, runtime: Arc<Runtime>, access: Access) -> anyhow::Result<()> {
     loop {
         // Accept a TCP connection and serve all of its requests in a separate
         // tokio task. Note that for now this only works with HTTP/1.1.
         let (client, addr) = listener.accept().await?;
-        println!("serving new client from {addr}");
+        println!("[{access:?}] serving new client from {addr}");
 
         let runtime = runtime.clone();
         tokio::task::spawn(async move {
@@ -118,7 +159,7 @@ pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
                     TokioIo::new(client),
                     hyper::service::service_fn(move |req| {
                         let runtime = runtime.clone();
-                        async move { runtime.handle_request(req).await }
+                        async move { runtime.handle_request(req, access).await }
                     }),
                 )
                 .await

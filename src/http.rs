@@ -1,3 +1,4 @@
+use crate::Access;
 use crate::runtime::Runtime;
 use crate::slug::generate_slug;
 use http_body_util::BodyExt;
@@ -18,6 +19,7 @@ impl Runtime {
     pub async fn handle_request(
         self: Arc<Self>,
         req: hyper::Request<hyper::body::Incoming>,
+        _access: Access,
     ) -> Result<hyper::Response<HyperOutgoingBody>> {
         let raw_host = req.headers().get("host").unwrap().to_str().unwrap();
         let v: Vec<_> = raw_host.split('.').take(2).collect();
