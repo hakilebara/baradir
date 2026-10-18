@@ -1,10 +1,16 @@
-use crate::http::InstanceState;
-use crate::App;
+use crate::executor::InstanceState;
 use crate::Config;
 use rusqlite::{params, Connection};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wasmtime::component::Linker;
+use wasmtime_wasi_http::p2::bindings::ProxyPre;
+
+pub struct App {
+    pub name: String,
+    pub filepath: String,
+    pub pre: Option<ProxyPre<InstanceState>>,
+}
 
 pub struct Runtime {
     pub config: Config,

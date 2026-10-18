@@ -1,11 +1,12 @@
+mod executor;
 mod http;
 mod runtime;
 mod slug;
 mod wit;
 
-use http::InstanceState;
+use executor::InstanceState;
 use hyper::server::conn::http1;
-use runtime::Runtime;
+use runtime::{App, Runtime};
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -61,12 +62,6 @@ impl Config {
             env_folder,
         })
     }
-}
-
-pub struct App {
-    pub name: String,
-    pub filepath: String,
-    pub pre: Option<ProxyPre<InstanceState>>,
 }
 
 pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
