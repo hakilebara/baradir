@@ -16,18 +16,34 @@ use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 
 pub struct Config {
+    public_addr: String,
+    private_addr: Option<String>,
     tcp_port: u16,
     base_domain: String,
     env_folder: String,
 }
 
 impl Config {
-    pub fn new(tcp_port: u16, base_domain: String, env_folder: String) -> Config {
-        Config {
+    pub fn new(
+        public_addr: String,
+        private_addr: Option<String>,
+        base_domain: String,
+        env_folder: String,
+    ) -> anyhow::Result<Config> {
+        let tcp_port = public_addr
+            .rsplit(':')
+            .next()
+            .and_then(|port| port.parse().ok())
+            .ok_or_else(|| {
+                anyhow::anyhow!("invalid public address `{public_addr}`: expected host:port")
+            })?;
+        Ok(Config {
+            public_addr,
+            private_addr,
             tcp_port,
             base_domain,
             env_folder,
-        }
+        })
     }
 }
 
@@ -77,7 +93,7 @@ pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
         }
     }
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.tcp_port)).await?;
+    let listener = TcpListener::bind(&config.public_addr).await?;
     println!("Listening on {}", listener.local_addr()?);
 
     // Prepare our server state and start listening for connections.

@@ -45,7 +45,8 @@ CLI flags:
 
 | flag | default | description |
 | --- | --- | --- |
-| `--port` | `8080` | TCP port to listen on |
+| `--public-addr` | `127.0.0.1:8080` | public address:port to listen on |
+| `--private-addr` | `None` | private address:port to listen on |
 | `--base-domain` | `baradir.localhost` | base domain used for routing |
 | `--env-folder` | `./workspaces` | root folder of environments |
 
