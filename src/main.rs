@@ -1,5 +1,5 @@
 use baradir::Config;
-use baradir::get_db_conn;
+use baradir::Db;
 use baradir::run;
 use clap::Parser;
 
@@ -21,6 +21,10 @@ pub struct Args {
     /// Base domain
     #[arg(short, long, default_value_t = "baradir.localhost".to_string())]
     pub base_domain: String,
+
+    /// SQLite database path
+    #[arg(short, long, default_value_t = "./data/db.sqlite".to_string())]
+    pub db_path: String,
 }
 
 #[tokio::main]
@@ -32,6 +36,10 @@ async fn main() -> anyhow::Result<()> {
         args.base_domain,
         args.env_folder,
     )?;
-    let conn = get_db_conn()?;
-    run(config, conn).await
+
+    let mut db = Db::open(&args.db_path)?;
+    db.init_schema()?;
+    db.seed_db()?;
+
+    run(config, db).await
 }

@@ -94,7 +94,9 @@ pub struct InstanceState {
 
 impl crate::wit::bindings::ManagerAppImports for InstanceState {
     fn list_apps(&mut self) -> Vec<String> {
-        self.runtime.list_apps()
+        self.runtime
+            .list_apps()
+            .expect("should return the list of app names")
     }
 
     fn get_domain(&mut self) -> String {

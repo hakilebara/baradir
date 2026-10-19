@@ -1,12 +1,13 @@
 mod db;
 mod executor;
 mod http;
+mod routes;
 mod runtime;
 mod server;
 mod slug;
 mod wit;
 
-pub use db::get_db_conn;
+pub use db::Db;
 pub use server::run;
 
 pub struct Config {

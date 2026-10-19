@@ -1,20 +1,37 @@
+use crate::db::{AppRow, Db};
 use crate::executor::InstanceState;
 use crate::Config;
-use rusqlite::{params, Connection};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wasmtime::component::Linker;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 
 pub struct App {
+    pub id: i64,
     pub name: String,
     pub filepath: String,
     pub pre: Option<ProxyPre<InstanceState>>,
 }
 
+impl From<AppRow> for App {
+    fn from(row: AppRow) -> Self {
+        App {
+            id: row.id,
+            name: row.name,
+            filepath: row.filepath,
+            pre: None,
+        }
+    }
+}
+
+pub struct NewApp {
+    pub name: String,
+    pub filepath: String,
+}
+
 pub struct Runtime {
+    pub db: Arc<Mutex<Db>>,
     pub config: Config,
-    pub conn: Arc<Mutex<Connection>>,
     pub apps: Arc<Mutex<HashMap<String, App>>>,
     pub engine: wasmtime::Engine, // TODO: remove and use pre.engine()
 }
@@ -27,13 +44,9 @@ impl Runtime {
         Ok(linker)
     }
 
-    pub fn list_apps(&self) -> Vec<String> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT name FROM app").unwrap();
-        stmt.query_map([], |row| Ok(row.get(0)?))
-            .unwrap()
-            .map(|app| app.unwrap())
-            .collect()
+    pub fn list_apps(&self) -> Result<Vec<String>, rusqlite::Error> {
+        let db = self.db.lock().unwrap();
+        db.get_app_names()
     }
 
     pub fn get_domain(&self, env_slug: &str) -> String {
@@ -53,54 +66,31 @@ impl Runtime {
         let wasm_filepath = format!("{}/{}.wasm", folder_filepath, name);
 
         std::fs::create_dir_all(folder_filepath)?;
-
         std::fs::write(&wasm_filepath, &bytes)?;
 
         let component = wasmtime::component::Component::from_binary(&self.engine, &bytes)?;
-
         let linker = Runtime::build_linker(&self.engine)?;
+        let pre = Some(wasmtime_wasi_http::p2::bindings::ProxyPre::new(
+            linker.instantiate_pre(&component)?,
+        )?);
 
-        let pre =
-            wasmtime_wasi_http::p2::bindings::ProxyPre::new(linker.instantiate_pre(&component)?)?;
-
-        // TODO: factor this out in a function
-        {
-            let mut conn = self.conn.lock().unwrap();
-            let tx = conn.transaction()?;
-
-            tx.execute(
-                "INSERT INTO app (name, filepath) VALUES (?1, ?2)",
-                params![name, wasm_filepath],
-            )?;
-            let app_id = tx.last_insert_rowid();
-
-            let env_id: i64 = tx.query_row(
-                "SELECT id FROM environment WHERE slug = (?1)",
-                params![env_slug],
-                |row| row.get(0),
-            )?;
-
-            tx.execute(
-                "INSERT INTO environment_app (environment_id, app_id) VALUES (?1, ?2)",
-                params![env_id, app_id],
-            )?;
-
-            tx.commit()?;
-        }
-
-        self.apps.lock().unwrap().insert(
-            name.clone(),
-            App {
+        let mut db = self.db.lock().unwrap();
+        let mut app = db.add_app_to_environment(
+            NewApp {
                 name: name.clone(),
                 filepath: wasm_filepath,
-                pre: Some(pre),
             },
-        );
+            &env_slug,
+        )?;
+
+        app.pre = pre;
 
         let url = format!(
             "http://{}.{}.{}:{}",
-            name, env_slug, self.config.base_domain, self.config.tcp_port
+            &app.name, env_slug, &self.config.base_domain, &self.config.tcp_port
         );
+
+        self.apps.lock().unwrap().insert(name, app);
 
         Ok(url)
     }

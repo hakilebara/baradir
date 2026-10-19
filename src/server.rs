@@ -1,8 +1,8 @@
+use crate::db::Db;
 use crate::executor::InstanceState;
 use crate::runtime::{App, Runtime};
 use crate::{Access, Config};
 use hyper::server::conn::http1;
-use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
@@ -11,44 +11,32 @@ use wasmtime::component::{Component, HasSelf};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 
-pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
+pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
     let engine = Engine::default();
 
-    let apps = Arc::new(Mutex::new(HashMap::new()));
+    let app_store = Arc::new(Mutex::new(HashMap::new()));
 
-    {
-        let mut stmt = conn.prepare("SELECT id, name, filepath FROM app")?;
-        let app_iter = stmt.query_map([], |row| {
-            Ok(App {
-                name: row.get(1)?,
-                filepath: row.get(2)?,
-                pre: None,
-            })
-        })?;
+    let app_rows = db.get_apps()?;
 
-        for app in app_iter {
-            let mut app = app?;
+    for row in app_rows {
+        let mut app: App = row.into();
 
-            // Compile the component on the command line to machine code
-            let component = Component::from_file(&engine, app.filepath.clone())?;
+        // Compile the component on the command line to machine code
+        let component = Component::from_file(&engine, app.filepath.clone())?;
 
-            // Prepare the `ProxyPre` which is a pre-instantiated version of the
-            // component. This will make per-request instantiation
-            // much quicker.
+        // Prepare the `ProxyPre` which is a pre-instantiated version of the
+        // component. This will make per-request instantiation
+        // much quicker.
+        let mut linker = Runtime::build_linker(&engine)?;
+        let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
 
-            let mut linker = Runtime::build_linker(&engine)?;
+        crate::wit::bindings::ManagerApp::add_to_linker::<InstanceState, HasSelf<InstanceState>>(
+            &mut linker,
+            |state| state,
+        )?;
 
-            // confusing syntax to say the least
-            crate::wit::bindings::ManagerApp::add_to_linker::<InstanceState, HasSelf<InstanceState>>(
-                &mut linker,
-                |state| state,
-            )?;
-
-            let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
-            app.pre = Some(pre);
-
-            apps.lock().unwrap().insert(app.name.clone(), app);
-        }
+        app.pre = Some(pre);
+        app_store.lock().unwrap().insert(app.name.clone(), app);
     }
 
     let private_listener = match &config.private_addr {
@@ -63,6 +51,7 @@ pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
     let listener = TcpListener::bind(&config.public_addr)
         .await
         .map_err(|e| anyhow::anyhow!("failed to bind public socket {}: {e}", config.public_addr))?;
+
     println!("Listening on {}", listener.local_addr()?);
 
     if let Some(pl) = &private_listener {
@@ -71,9 +60,9 @@ pub async fn run(config: Config, conn: Connection) -> anyhow::Result<()> {
 
     // Prepare our server state and start listening for connections.
     let runtime = Arc::new(Runtime {
-        apps,
+        db: Arc::new(Mutex::new(db)),
+        apps: app_store,
         config: config,
-        conn: Arc::new(Mutex::new(conn)),
         engine: engine.clone(),
     });
 
