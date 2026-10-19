@@ -1,8 +1,7 @@
-mod db;
 use baradir::Config;
+use baradir::get_db_conn;
 use baradir::run;
 use clap::Parser;
-use db::get_db_conn;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
