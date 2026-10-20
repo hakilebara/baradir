@@ -1,6 +1,5 @@
 mod db;
 mod executor;
-mod http;
 mod routes;
 mod runtime;
 mod server;

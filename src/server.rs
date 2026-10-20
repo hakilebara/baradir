@@ -1,7 +1,10 @@
 use crate::db::Db;
 use crate::executor::InstanceState;
+use crate::routes::{Route, route};
 use crate::runtime::{App, Runtime};
 use crate::{Access, Config};
+use http_body_util::BodyExt;
+use hyper::StatusCode;
 use hyper::server::conn::http1;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -10,6 +13,7 @@ use wasmtime::Engine;
 use wasmtime::component::{Component, HasSelf};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
+use wasmtime_wasi_http::p2::body::HyperOutgoingBody;
 
 pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
     let engine = Engine::default();
@@ -99,5 +103,43 @@ async fn serve(listener: TcpListener, runtime: Arc<Runtime>, access: Access) -> 
                 eprintln!("error serving client[{addr}]: {e:?}");
             }
         });
+    }
+}
+
+fn empty(status: StatusCode) -> hyper::Response<HyperOutgoingBody> {
+    hyper::Response::builder()
+        .status(status)
+        .body(
+            http_body_util::Empty::<bytes::Bytes>::new()
+                .map_err(|_| unreachable!("infaillable"))
+                .boxed_unsync(),
+        )
+        .unwrap()
+}
+
+impl Runtime {
+    pub async fn handle_request(
+        self: Arc<Self>,
+        req: hyper::Request<hyper::body::Incoming>,
+        access: Access,
+    ) -> wasmtime::Result<hyper::Response<HyperOutgoingBody>> {
+        let route = route(
+            access,
+            req.headers().get("host").map(|h| h.to_str()).transpose()?,
+            &self.config.base_domain,
+            &self.db.lock().unwrap(),
+        );
+
+        return match route {
+            Route::Component { app, env } => self.execute(req, app, env).await,
+            Route::Admin => {
+                todo!("implement admin");
+            }
+            Route::WebHost => {
+                todo!("implement web hosting");
+            }
+            Route::NotFound => Ok(empty(StatusCode::NOT_FOUND)),
+            Route::Forbidden => Ok(empty(StatusCode::FORBIDDEN)),
+        };
     }
 }
