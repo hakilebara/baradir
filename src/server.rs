@@ -28,12 +28,13 @@ pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
         // component. This will make per-request instantiation
         // much quicker.
         let mut linker = Runtime::build_linker(&engine)?;
-        let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
 
         crate::wit::bindings::ManagerApp::add_to_linker::<InstanceState, HasSelf<InstanceState>>(
             &mut linker,
             |state| state,
         )?;
+
+        let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
 
         app.pre = Some(pre);
         app_store.lock().unwrap().insert(app.name.clone(), app);

@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Error};
+use rusqlite::{Connection, Error, params};
 
 use crate::runtime::{App, NewApp};
 pub struct Db {
@@ -119,6 +119,17 @@ impl Db {
                 JOIN app a ON a.id = ea.app_id
                 WHERE e.slug = ?1 AND a.name = ?2",
                 params![env_slug, app_name],
+                |_| Ok(()),
+            )
+            .is_ok()
+    }
+
+    pub fn env_exists(&self, env_slug: &str) -> bool {
+        self.conn
+            .query_row(
+                "SELECT * FROM environment
+                WHERE slug = ?1",
+                params![env_slug],
                 |_| Ok(()),
             )
             .is_ok()

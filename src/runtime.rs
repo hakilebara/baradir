@@ -1,6 +1,6 @@
+use crate::Config;
 use crate::db::{AppRow, Db};
 use crate::executor::InstanceState;
-use crate::Config;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wasmtime::component::Linker;
