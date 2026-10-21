@@ -3,7 +3,8 @@ use crate::executor::InstanceState;
 use crate::routes::{Route, route};
 use crate::runtime::{App, Runtime};
 use crate::{Access, Config};
-use http_body_util::BodyExt;
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
 use hyper::StatusCode;
 use hyper::server::conn::http1;
 use std::collections::HashMap;
@@ -111,10 +112,16 @@ fn empty(status: StatusCode) -> hyper::Response<HyperOutgoingBody> {
         .status(status)
         .body(
             http_body_util::Empty::<bytes::Bytes>::new()
-                .map_err(|_| unreachable!("infaillable"))
+                .map_err(|_| unreachable!("infallible"))
                 .boxed_unsync(),
         )
         .unwrap()
+}
+
+fn bytes_body(body: Bytes) -> HyperOutgoingBody {
+    Full::new(body)
+        .map_err(|_| unreachable!("infallible"))
+        .boxed_unsync()
 }
 
 impl Runtime {
@@ -133,7 +140,14 @@ impl Runtime {
         return match route {
             Route::Component { app, env } => self.execute(req, app, env).await,
             Route::Admin => {
-                todo!("implement admin");
+                let (parts, body) = req.into_parts();
+                let body = body.collect().await?.to_bytes();
+                let req = http::Request::from_parts(parts, body);
+
+                let res = baradir_admin::handle(req).await;
+
+                let (parts, body) = res.into_parts();
+                Ok(hyper::Response::from_parts(parts, bytes_body(body)))
             }
             Route::WebHost => {
                 todo!("implement web hosting");
