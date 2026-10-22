@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Error, params};
+use rusqlite::{params, Connection, Error};
 
 use crate::runtime::{App, NewApp};
 pub struct Db {
@@ -80,6 +80,11 @@ impl Db {
             names.push(row.get(0)?);
         }
         Ok(names)
+    }
+
+    pub fn get_env_slugs(&self) -> Result<Vec<String>, Error> {
+        let mut stmt = self.conn.prepare("SELECT slug FROM environment")?;
+        stmt.query_map([], |row| Ok(row.get(0)?))?.collect()
     }
 
     pub fn add_app_to_environment(&mut self, app: NewApp, env: &str) -> Result<App, Error> {

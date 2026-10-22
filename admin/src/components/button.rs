@@ -102,7 +102,6 @@ const BASE: StaticClass = class!(
 ///     </a>
 /// }
 /// ```
-#[allow(dead_code)]
 #[must_use]
 pub fn button_variants(
     variant: ButtonVariant,

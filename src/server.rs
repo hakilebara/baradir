@@ -1,7 +1,7 @@
 use crate::db::Db;
 use crate::executor::InstanceState;
 use crate::routes::{Route, route};
-use crate::runtime::{App, Runtime};
+use crate::runtime::{App, DbStore, Runtime};
 use crate::{Access, Config};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -65,8 +65,12 @@ pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
     }
 
     // Prepare our server state and start listening for connections.
+    let db = Arc::new(Mutex::new(db));
+    let admin = baradir_admin::Admin::new(DbStore::new(db.clone()));
+
     let runtime = Arc::new(Runtime {
-        db: Arc::new(Mutex::new(db)),
+        db,
+        admin,
         apps: app_store,
         config: config,
         engine: engine.clone(),
@@ -144,7 +148,7 @@ impl Runtime {
                 let body = body.collect().await?.to_bytes();
                 let req = http::Request::from_parts(parts, body);
 
-                let res = baradir_admin::handle(req).await;
+                let res = self.admin.handle(req).await;
 
                 let (parts, body) = res.into_parts();
                 Ok(hyper::Response::from_parts(parts, bytes_body(body)))

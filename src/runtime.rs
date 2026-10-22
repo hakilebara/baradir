@@ -1,6 +1,6 @@
-use crate::Config;
 use crate::db::{AppRow, Db};
 use crate::executor::InstanceState;
+use crate::Config;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wasmtime::component::Linker;
@@ -31,6 +31,7 @@ pub struct NewApp {
 
 pub struct Runtime {
     pub db: Arc<Mutex<Db>>,
+    pub admin: baradir_admin::Admin,
     pub config: Config,
     pub apps: Arc<Mutex<HashMap<String, App>>>,
     pub engine: wasmtime::Engine, // TODO: remove and use pre.engine()
@@ -93,5 +94,29 @@ impl Runtime {
         self.apps.lock().unwrap().insert(name, app);
 
         Ok(url)
+    }
+}
+
+#[derive(Clone)]
+pub struct DbStore {
+    db: Arc<Mutex<Db>>,
+}
+
+impl DbStore {
+    pub fn new(db: Arc<Mutex<Db>>) -> Self {
+        Self { db }
+    }
+}
+
+impl baradir_admin::AdminStore for DbStore {
+    fn list_environments(&self) -> Vec<String> {
+        self.db.lock().unwrap().get_env_slugs().unwrap()
+    }
+
+    fn create_environment(&self) -> Result<String, String> {
+        let slug = crate::slug::generate_slug();
+        let mut db = self.db.lock().unwrap();
+        db.create_environment(&slug).map_err(|e| e.to_string())?;
+        Ok(slug)
     }
 }

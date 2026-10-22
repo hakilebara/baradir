@@ -3,23 +3,34 @@ mod components;
 
 use bytes::Bytes;
 use http_body_util::BodyExt;
-use std::sync::LazyLock;
+use std::sync::Arc;
 use topcoat::router::{Body, Router};
 
-static ROUTER: LazyLock<Router> = LazyLock::new(app::router);
-
-pub trait AdminStore {
+pub trait AdminStore: Send + Sync + 'static {
     fn list_environments(&self) -> Vec<String>;
+    fn create_environment(&self) -> Result<String, String>;
 }
 
-pub async fn handle(req: http::Request<Bytes>) -> http::Response<Bytes> {
-    let (parts, body) = req.into_parts();
-    let req = http::Request::from_parts(parts, Body::from(body));
+pub struct Admin {
+    router: Router,
+}
 
-    let res = ROUTER.handle(req).await;
+impl Admin {
+    pub fn new(store: impl AdminStore) -> Self {
+        Self {
+            router: app::router(Arc::new(store)),
+        }
+    }
 
-    let (parts, body) = res.into_parts();
-    let body = body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
+    pub async fn handle(&self, req: http::Request<Bytes>) -> http::Response<Bytes> {
+        let (parts, body) = req.into_parts();
+        let req = http::Request::from_parts(parts, Body::from(body));
 
-    http::Response::from_parts(parts, body)
+        let res = self.router.handle(req).await;
+
+        let (parts, body) = res.into_parts();
+        let body = body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
+
+        http::Response::from_parts(parts, body)
+    }
 }

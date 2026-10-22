@@ -8,7 +8,6 @@ const NOUNS: [&str; 10] = [
     "beacon", "canyon", "falcon", "glacier", "harbor", "meadow", "nebula", "pioneer", "ridge",
     "summit",
 ];
-#[allow(dead_code)]
 pub fn generate_slug() -> String {
     let adj = ADJECTIVES[rand::random_range(..ADJECTIVES.len())];
     let noun = NOUNS[rand::random_range(..NOUNS.len())];
