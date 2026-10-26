@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use rusqlite::{params, Connection, Error};
 
 use crate::runtime::{App, NewApp};
@@ -13,7 +15,7 @@ pub struct AppRow {
 }
 
 impl Db {
-    pub fn open(path: &str) -> Result<Self, Error> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let conn = rusqlite::Connection::open(path)?;
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
         Ok(Db { conn })

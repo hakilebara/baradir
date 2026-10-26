@@ -63,7 +63,12 @@ impl Runtime {
         env_slug: String,
         bytes: Vec<u8>,
     ) -> anyhow::Result<String> {
-        let folder_filepath = format!("{}/{}/{}/", self.config.env_folder, env_slug, name);
+        let folder_filepath = format!(
+            "{}/{}/{}/",
+            self.config.environments_dir().display(),
+            env_slug,
+            name
+        );
         let wasm_filepath = format!("{}/{}.wasm", folder_filepath, name);
 
         std::fs::create_dir_all(folder_filepath)?;

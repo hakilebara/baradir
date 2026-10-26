@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use baradir::Config;
 use baradir::Db;
 use baradir::run;
@@ -14,17 +16,13 @@ pub struct Args {
     #[arg(long)]
     pub private_addr: Option<String>,
 
-    /// Root folder of environments
-    #[arg(short, long, default_value_t = "./workspaces".to_string())]
-    pub env_folder: String,
-
     /// Base domain
     #[arg(short, long, default_value_t = "baradir.localhost".to_string())]
     pub base_domain: String,
 
-    /// SQLite database path
-    #[arg(short, long, default_value_t = "./data/db.sqlite".to_string())]
-    pub db_path: String,
+    /// Path to data folder
+    #[arg(short, long, default_value = "./data")]
+    pub data_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -34,10 +32,11 @@ async fn main() -> anyhow::Result<()> {
         args.public_addr,
         args.private_addr,
         args.base_domain,
-        args.env_folder,
+        args.data_dir,
     )?;
 
-    let mut db = Db::open(&args.db_path)?;
+    std::fs::create_dir_all(config.data_dir())?;
+    let mut db = Db::open(config.db_path())?;
     db.init_schema()?;
     db.seed_db()?;
 
