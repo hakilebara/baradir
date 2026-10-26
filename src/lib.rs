@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod executor;
+mod registry;
 mod routes;
 mod runtime;
 mod server;

@@ -15,11 +15,13 @@ anyhow = "1.0.104"
 baradir-admin = { path = "admin" }
 bytes = "1.12.1"
 clap = { version = "4.6.6", features = ["derive"] }
+hex = "0.4.3"
 http = "1"
 http-body-util = "0.1.5"
 hyper = "1.10.1"
 rand = "0.10.2"
 rusqlite = "0.40.2"
+sha2 = "0.11.1"
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-macros = "2.7.0"
 wasmtime = "47.0.2"
