@@ -38,7 +38,6 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(config.data_dir())?;
     let mut db = Db::open(config.db_path())?;
     db.init_schema()?;
-    db.seed_db()?;
 
     run(config, db).await
 }

@@ -1,7 +1,7 @@
 use crate::db::Db;
-use crate::executor::InstanceState;
+use crate::executor::ManagerInstanceState;
 use crate::routes::{Route, route};
-use crate::runtime::{App, DbStore, Runtime};
+use crate::runtime::{App, DbStore, ManagerApp, Runtime};
 use crate::{Access, Config};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use wasmtime::Engine;
+use wasmtime::component::Linker;
 use wasmtime::component::{Component, HasSelf};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
@@ -21,6 +22,23 @@ pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
 
     let app_store = Arc::new(Mutex::new(HashMap::new()));
 
+    // pre-compile manager component
+    // TODO: refactor into its own function
+    static MANAGER_WASM_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/manager.wasm"));
+    let component = wasmtime::component::Component::from_binary(&engine, MANAGER_WASM_BYTES)?;
+    let mut linker: Linker<ManagerInstanceState> = Linker::new(&engine);
+    wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+    wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
+    crate::wit::bindings::ManagerApp::add_to_linker::<
+        ManagerInstanceState,
+        HasSelf<ManagerInstanceState>,
+    >(&mut linker, |state| state)?;
+    let manager = ManagerApp {
+        // `ProxyPre` is a pre-instantiated version of the
+        // component. This will make per-request instantiation much quicker.
+        pre: ProxyPre::new(linker.instantiate_pre(&component)?)?,
+    };
+
     let app_rows = db.get_apps()?;
 
     for row in app_rows {
@@ -29,15 +47,7 @@ pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
         // Compile the component on the command line to machine code
         let component = Component::from_file(&engine, app.filepath.clone())?;
 
-        // Prepare the `ProxyPre` which is a pre-instantiated version of the
-        // component. This will make per-request instantiation
-        // much quicker.
-        let mut linker = Runtime::build_linker(&engine)?;
-
-        crate::wit::bindings::ManagerApp::add_to_linker::<InstanceState, HasSelf<InstanceState>>(
-            &mut linker,
-            |state| state,
-        )?;
+        let linker = Runtime::build_linker(&engine)?;
 
         let pre = ProxyPre::new(linker.instantiate_pre(&component)?)?;
 
@@ -71,7 +81,8 @@ pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
     let runtime = Arc::new(Runtime {
         db,
         admin,
-        apps: app_store,
+        manager,
+        app_store,
         config: config,
         engine: engine.clone(),
     });
@@ -142,7 +153,8 @@ impl Runtime {
         );
 
         return match route {
-            Route::Component { app, env } => self.execute(req, app, env).await,
+            Route::Manager { env } => self.execute_manager(req, env).await,
+            Route::Component { app, .. } => self.execute(req, app).await,
             Route::Admin => {
                 let (parts, body) = req.into_parts();
                 let body = body.collect().await?.to_bytes();

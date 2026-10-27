@@ -1,5 +1,5 @@
 use crate::db::{AppRow, Db};
-use crate::executor::InstanceState;
+use crate::executor::{InstanceState, ManagerInstanceState};
 use crate::Config;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -11,6 +11,10 @@ pub struct App {
     pub name: String,
     pub filepath: String,
     pub pre: Option<ProxyPre<InstanceState>>,
+}
+
+pub struct ManagerApp {
+    pub pre: ProxyPre<ManagerInstanceState>,
 }
 
 impl From<AppRow> for App {
@@ -33,7 +37,8 @@ pub struct Runtime {
     pub db: Arc<Mutex<Db>>,
     pub admin: baradir_admin::Admin,
     pub config: Config,
-    pub apps: Arc<Mutex<HashMap<String, App>>>,
+    pub manager: ManagerApp,
+    pub app_store: Arc<Mutex<HashMap<String, App>>>,
     pub engine: wasmtime::Engine, // TODO: remove and use pre.engine()
 }
 
@@ -96,7 +101,7 @@ impl Runtime {
             &app.name, env_slug, &self.config.base_domain, &self.config.tcp_port
         );
 
-        self.apps.lock().unwrap().insert(name, app);
+        self.app_store.lock().unwrap().insert(name, app);
 
         Ok(url)
     }

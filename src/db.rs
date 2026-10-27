@@ -4,7 +4,6 @@ use rusqlite::{params, Connection, Error};
 
 use crate::runtime::{App, NewApp};
 pub struct Db {
-    // TODO: make this field private once all db access have been moved here
     conn: Connection,
 }
 
@@ -46,15 +45,14 @@ impl Db {
         Ok(())
     }
 
-    pub fn seed_db(&mut self) -> Result<(), Error> {
+    pub fn seed_test_db(&mut self) -> Result<(), Error> {
         self.conn.execute_batch(
             "
-        INSERT OR IGNORE INTO app (name, filepath)
+            INSERT OR IGNORE INTO app (name, filepath)
         VALUES ('hello', 'target/wasm32-wasip2/release/hello.wasm');
-
-        INSERT OR IGNORE INTO app (name, filepath)
+            INSERT OR IGNORE INTO app (name, filepath)
         VALUES ('manager', 'target/wasm32-wasip2/release/manager.wasm');
-            ",
+        ",
         )?;
         Ok(())
     }
@@ -196,7 +194,7 @@ mod test {
     fn can_create_new_env() -> anyhow::Result<()> {
         let mut db = Db::open(":memory:")?;
         db.init_schema()?;
-        db.seed_db()?;
+        db.seed_test_db()?;
 
         assert_eq!(count_env_table_entries(&db)?, 0);
 
@@ -211,7 +209,7 @@ mod test {
     fn return_list_of_app_names() -> anyhow::Result<()> {
         let mut db = Db::open(":memory:")?;
         db.init_schema()?;
-        db.seed_db()?;
+        db.seed_test_db()?;
         assert_eq!(db.get_app_names()?, vec!["hello", "manager"]);
         Ok(())
     }

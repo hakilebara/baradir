@@ -1,8 +1,9 @@
-use crate::Access;
 use crate::db::Db;
+use crate::Access;
 
 #[derive(Debug, PartialEq)]
 pub enum Route {
+    Manager { env: String },
     Component { app: String, env: String },
     Admin,
     WebHost,
@@ -11,6 +12,10 @@ pub enum Route {
 }
 
 const PRIVATE: [&str; 1] = ["manager"];
+
+fn is_valid_manager(app_name: &str, env_slug: &str, db: &Db) -> bool {
+    app_name == "manager" && db.env_exists(env_slug)
+}
 
 pub fn route(access: Access, host: Option<&str>, base_domain: &str, db: &Db) -> Route {
     let Some(host) = host else {
@@ -36,6 +41,13 @@ pub fn route(access: Access, host: Option<&str>, base_domain: &str, db: &Db) -> 
     let sub_domains: Vec<&str> = prefix.split('.').collect();
 
     match (access, sub_domains.as_slice()) {
+        // <manager>.<env_slub>.<base-domain>
+        (Access::Private, [app_name, env_slug]) if is_valid_manager(app_name, env_slug, db) => {
+            Route::Manager {
+                env: env_slug.to_string(),
+            }
+        }
+
         // <app_name>.<env_slub>.<base-domain>
         (_, [app_name, env_slug]) if !db.app_exists(env_slug, app_name) => Route::NotFound,
         (Access::Public, [app_name, env_slug]) if PRIVATE.contains(app_name) => Route::Forbidden,
@@ -63,7 +75,7 @@ mod test {
     fn test_db() -> Db {
         let mut db = Db::open(":memory:").unwrap();
         db.init_schema().unwrap();
-        db.seed_db().unwrap();
+        db.seed_test_db().unwrap();
         db.create_environment("test-env").unwrap();
         db
     }
@@ -129,8 +141,7 @@ mod test {
     fn private_socket_serves_manager() {
         assert_eq!(
             route_for(Access::Private, "manager.test-env.baradir.localhost"),
-            Route::Component {
-                app: "manager".into(),
+            Route::Manager {
                 env: "test-env".into(),
             }
         );
