@@ -4,6 +4,8 @@ fn main() {
     println!("cargo:rerun-if-changed=manager/Cargo.toml");
     println!("cargo:rerun-if-changed=manager/src");
     println!("cargo:rerun-if-changed=manager/wit");
+    println!("cargo:rerun-if-changed=manager/build.rs");
+    println!("cargo:rerun-if-changed=manager/styles.css");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

@@ -1,5 +1,6 @@
-use axum::{Router, extract::Multipart, response::Redirect, routing::get, routing::post};
-use maud::{Markup, html};
+mod app;
+#[allow(dead_code)] // unused parts of vendored topcoat-ui components
+mod components;
 
 mod bindings {
     wit_bindgen::generate!({
@@ -7,110 +8,24 @@ mod bindings {
     });
 }
 
-use bindings::{get_domain, install_app_from_binary, list_apps};
+use http_body_util::BodyExt;
+use std::sync::OnceLock;
+use topcoat::router::Router;
+use wstd::http::{Body, Error, Request, Response};
 
-#[wstd_axum::http_server]
-fn main() -> Router {
-    Router::new().route("/", get(home)).route("/", post(upload))
+fn router() -> &'static Router {
+    static ROUTER: OnceLock<Router> = OnceLock::new();
+    ROUTER.get_or_init(app::router)
 }
 
-fn application_item(name: &str, url: &str) -> Markup {
-    html! {
-        style {
-            "
-                .card_container {
-                    display: block;
-                    padding: 16px;
-                    background-color: #fff;
-                    padding: 20px;
-                    margin-bottom: 20px;
-                    border-radius: 30px;
-                    transition: 200ms;
-                    color: black;
-                    text-decoration: none;
-                }
+#[wstd::http_server]
+async fn main(req: Request<Body>) -> Result<Response<Body>, Error> {
+    let (parts, body) = req.into_parts();
+    let req = http::Request::from_parts(parts, topcoat::router::Body::new(body.into_boxed_body()));
 
-                .card_container:hover {
-                    background-color: lightgrey;
-                }
-            "
-        }
-        a href={ (url) } class="card_container" {
-            (name)
-        }
-    }
-}
+    let res = router().handle(req).await;
 
-async fn home() -> Markup {
-    let apps: Vec<String> = list_apps();
-    let domain: String = get_domain();
-    html! {
-            head {
-                style {
-                    "
-                    html, body {
-                        height: 100%;
-                        margin: 0;
-                    }
-                    body {
-                        font-family: sans-serif;
-                    }
-                    header {
-                        background-color: #fff;
-                        padding: 20px;
-                    }
-                    body{
-                        background-color: #fff8f4;
-                    }
-                    main {
-                        display: grid;
-                        justify-content: center;
-                        padding: 8%;
-                    }
-                    h1 {
-                        margin: 0;
-                    }
-                    .container {
-
-                    }
-                "
-                }
-            }
-
-            header {
-                h1 { "Baradir" }
-            }
-            main {
-                div class="container" {
-                    h2 { "Installed applications" }
-                    div class="application_list" {
-                        @for name in &apps {
-                            @let url = format!("http://{}.{}", name, domain);
-                            (application_item(name, &url))
-                        }
-                    }
-                    h2 { "Upload a new application" }
-                    form method="post" enctype="multipart/form-data" {
-                        input type="text" name="name" placeholder="App name" required;
-                        input type="file" name="file" accept=".wasm";
-                        input type="submit" value="Upload" style="display: block;";
-                    }
-
-            }
-        }
-    }
-}
-
-async fn upload(mut multipart: Multipart) -> Redirect {
-    let mut name = String::new();
-    let mut bytes = Vec::new();
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        match field.name() {
-            Some("name") => name = field.text().await.unwrap(),
-            Some("file") => bytes = field.bytes().await.unwrap().to_vec(),
-            _ => (),
-        }
-    }
-    let _url = install_app_from_binary(&name, &bytes).unwrap();
-    Redirect::to("/")
+    let (parts, body) = res.into_parts();
+    let body = Body::from_http_body(body.map_err(|e| anyhow::anyhow!(e)));
+    Ok(Response::from_parts(parts, body))
 }
