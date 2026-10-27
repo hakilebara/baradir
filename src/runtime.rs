@@ -71,6 +71,11 @@ impl Runtime {
         if name == crate::MANAGER {
             anyhow::bail!("`{name}` is a reserved app name");
         }
+        if !crate::is_valid_segment(&name) {
+            anyhow::bail!(
+                "invalid app name `{name}`: expected lowercase letters, digits, and dashes"
+            );
+        }
 
         // disk write
         let digest = self.registry.put(&bytes)?;

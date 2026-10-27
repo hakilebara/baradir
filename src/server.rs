@@ -156,7 +156,7 @@ impl Runtime {
 
         return match route {
             Route::Manager { env } => self.execute_manager(req, env).await,
-            Route::Component { app, .. } => self.execute(req, app).await,
+            Route::Component { app, env } => self.execute(req, app, env).await,
             Route::Admin => {
                 let (parts, body) = req.into_parts();
                 let body = body.collect().await?.to_bytes();

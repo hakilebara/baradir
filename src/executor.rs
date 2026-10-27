@@ -1,7 +1,7 @@
 use crate::runtime::Runtime;
 use std::sync::Arc;
 use wasmtime::component::ResourceTable;
-use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxView, WasiView};
 use wasmtime_wasi_http::p2::bindings::http::types::Scheme;
 use wasmtime_wasi_http::{
     WasiHttpCtx,
@@ -13,6 +13,7 @@ impl Runtime {
         self: Arc<Self>,
         req: hyper::Request<hyper::body::Incoming>,
         app: String,
+        env: String,
     ) -> wasmtime::Result<hyper::Response<HyperOutgoingBody>> {
         // Create per-http-request state within a `Store` and prepare the
         // initial resources  passed to the `handle` function.
@@ -26,11 +27,24 @@ impl Runtime {
             .clone()
             .unwrap();
 
+        if !crate::is_valid_segment(&env) || !crate::is_valid_segment(&app) {
+            wasmtime::bail!("invalid app or environment segment");
+        }
+
+        // Each app instance gets its own writable directory, mounted at /data.
+        let app_data_dir = self.config.environments_dir().join(&env).join(&app);
+        std::fs::create_dir_all(&app_data_dir)?;
+
+        let wasi = WasiCtx::builder()
+            .inherit_stdio()
+            .preopened_dir(&app_data_dir, "/data", DirPerms::all(), FilePerms::all())?
+            .build();
+
         let mut store = wasmtime::Store::new(
             pre.engine(),
             InstanceState {
                 table: ResourceTable::new(),
-                wasi: WasiCtx::builder().inherit_stdio().build(),
+                wasi,
                 http: WasiHttpCtx::new(),
             },
         );
