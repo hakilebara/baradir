@@ -6,7 +6,6 @@ pub struct Registry {
     root: PathBuf,
 }
 
-#[allow(dead_code)]
 impl Registry {
     pub fn new(root: PathBuf) -> Self {
         Registry { root }

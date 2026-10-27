@@ -12,6 +12,8 @@ pub use config::Config;
 pub use db::Db;
 pub use server::run;
 
+pub(crate) const MANAGER: &str = "manager";
+
 #[derive(Clone, Copy, Debug)]
 pub enum Access {
     Public,

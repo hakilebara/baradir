@@ -11,8 +11,6 @@ pub enum Route {
     Forbidden,
 }
 
-const PRIVATE: [&str; 1] = ["manager"];
-
 fn is_valid_manager(app_name: &str, env_slug: &str, db: &Db) -> bool {
     app_name == "manager" && db.env_exists(env_slug)
 }
@@ -41,16 +39,18 @@ pub fn route(access: Access, host: Option<&str>, base_domain: &str, db: &Db) -> 
     let sub_domains: Vec<&str> = prefix.split('.').collect();
 
     match (access, sub_domains.as_slice()) {
-        // <manager>.<env_slub>.<base-domain>
+        // <manager>.<env_slug>.<base-domain>
         (Access::Private, [app_name, env_slug]) if is_valid_manager(app_name, env_slug, db) => {
             Route::Manager {
                 env: env_slug.to_string(),
             }
         }
+        (Access::Public, [app_name, env_slug]) if is_valid_manager(app_name, env_slug, db) => {
+            Route::Forbidden
+        }
 
-        // <app_name>.<env_slub>.<base-domain>
+        // <app_name>.<env_slug>.<base-domain>
         (_, [app_name, env_slug]) if !db.app_exists(env_slug, app_name) => Route::NotFound,
-        (Access::Public, [app_name, env_slug]) if PRIVATE.contains(app_name) => Route::Forbidden,
         (_, [app_name, env_slug]) => Route::Component {
             app: app_name.to_string(),
             env: env_slug.to_string(),
@@ -75,8 +75,15 @@ mod test {
     fn test_db() -> Db {
         let mut db = Db::open(":memory:").unwrap();
         db.init_schema().unwrap();
-        db.seed_test_db().unwrap();
         db.create_environment("test-env").unwrap();
+        db.add_app_to_environment(
+            crate::runtime::NewApp {
+                name: "demo".into(),
+                digest: "deadbeef".into(),
+            },
+            "test-env",
+        )
+        .unwrap();
         db
     }
 
@@ -87,9 +94,9 @@ mod test {
     #[test]
     fn public_app_route_is_component() {
         assert_eq!(
-            route_for(Access::Public, "hello.test-env.baradir.localhost"),
+            route_for(Access::Public, "demo.test-env.baradir.localhost"),
             Route::Component {
-                app: "hello".into(),
+                app: "demo".into(),
                 env: "test-env".into(),
             }
         );
@@ -121,17 +128,17 @@ mod test {
     #[test]
     fn prefix_with_double_dot_is_not_found() {
         assert_eq!(
-            route_for(Access::Public, "hello..baradir.localhost"),
+            route_for(Access::Public, "demo..baradir.localhost"),
             Route::NotFound
         );
     }
 
     #[test]
-    fn private_socket_serves_hello() {
+    fn private_socket_serves_demo() {
         assert_eq!(
-            route_for(Access::Private, "hello.test-env.baradir.localhost"),
+            route_for(Access::Private, "demo.test-env.baradir.localhost"),
             Route::Component {
-                app: "hello".into(),
+                app: "demo".into(),
                 env: "test-env".into(),
             }
         );
@@ -144,6 +151,22 @@ mod test {
             Route::Manager {
                 env: "test-env".into(),
             }
+        );
+    }
+
+    #[test]
+    fn public_manager_is_forbidden() {
+        assert_eq!(
+            route_for(Access::Public, "manager.test-env.baradir.localhost"),
+            Route::Forbidden
+        );
+    }
+
+    #[test]
+    fn private_manager_unknown_env_is_not_found() {
+        assert_eq!(
+            route_for(Access::Private, "manager.nope.baradir.localhost"),
+            Route::NotFound
         );
     }
 
@@ -162,9 +185,9 @@ mod test {
     #[test]
     fn host_with_port_routes_to_component() {
         assert_eq!(
-            route_for(Access::Public, "hello.test-env.baradir.localhost:8080"),
+            route_for(Access::Public, "demo.test-env.baradir.localhost:8080"),
             Route::Component {
-                app: "hello".into(),
+                app: "demo".into(),
                 env: "test-env".into(),
             }
         );
@@ -173,7 +196,7 @@ mod test {
     #[test]
     fn unknown_env_is_not_found() {
         assert_eq!(
-            route_for(Access::Public, "hello.nope.baradir.localhost"),
+            route_for(Access::Public, "demo.nope.baradir.localhost"),
             Route::NotFound
         );
     }
@@ -197,7 +220,7 @@ mod test {
     #[test]
     fn non_matching_base_domain_is_not_found() {
         assert_eq!(
-            route_for(Access::Public, "hello.test-env.other.example"),
+            route_for(Access::Public, "demo.test-env.other.example"),
             Route::NotFound
         );
     }

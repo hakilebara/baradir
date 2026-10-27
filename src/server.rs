@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::executor::ManagerInstanceState;
+use crate::registry::Registry;
 use crate::routes::{Route, route};
 use crate::runtime::{App, DbStore, ManagerApp, Runtime};
 use crate::{Access, Config};
@@ -20,6 +21,8 @@ use wasmtime_wasi_http::p2::body::HyperOutgoingBody;
 pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
     let engine = Engine::default();
 
+    let registry = Registry::new(config.registry_dir());
+
     let app_store = Arc::new(Mutex::new(HashMap::new()));
 
     // pre-compile manager component
@@ -39,13 +42,11 @@ pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
         pre: ProxyPre::new(linker.instantiate_pre(&component)?)?,
     };
 
-    let app_rows = db.get_apps()?;
-
-    for row in app_rows {
+    for row in db.get_apps()? {
         let mut app: App = row.into();
 
         // Compile the component on the command line to machine code
-        let component = Component::from_file(&engine, app.filepath.clone())?;
+        let component = Component::from_file(&engine, registry.path(&app.digest))?;
 
         let linker = Runtime::build_linker(&engine)?;
 
@@ -85,6 +86,7 @@ pub async fn run(config: Config, db: Db) -> anyhow::Result<()> {
         app_store,
         config: config,
         engine: engine.clone(),
+        registry,
     });
 
     match private_listener {

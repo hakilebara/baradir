@@ -1,5 +1,6 @@
 use crate::db::{AppRow, Db};
 use crate::executor::{InstanceState, ManagerInstanceState};
+use crate::registry::Registry;
 use crate::Config;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -7,9 +8,8 @@ use wasmtime::component::Linker;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 
 pub struct App {
-    pub id: i64,
     pub name: String,
-    pub filepath: String,
+    pub digest: String,
     pub pre: Option<ProxyPre<InstanceState>>,
 }
 
@@ -20,9 +20,8 @@ pub struct ManagerApp {
 impl From<AppRow> for App {
     fn from(row: AppRow) -> Self {
         App {
-            id: row.id,
             name: row.name,
-            filepath: row.filepath,
+            digest: row.digest,
             pre: None,
         }
     }
@@ -30,7 +29,7 @@ impl From<AppRow> for App {
 
 pub struct NewApp {
     pub name: String,
-    pub filepath: String,
+    pub digest: String,
 }
 
 pub struct Runtime {
@@ -40,6 +39,7 @@ pub struct Runtime {
     pub manager: ManagerApp,
     pub app_store: Arc<Mutex<HashMap<String, App>>>,
     pub engine: wasmtime::Engine, // TODO: remove and use pre.engine()
+    pub registry: Registry,
 }
 
 impl Runtime {
@@ -68,33 +68,30 @@ impl Runtime {
         env_slug: String,
         bytes: Vec<u8>,
     ) -> anyhow::Result<String> {
-        let folder_filepath = format!(
-            "{}/{}/{}/",
-            self.config.environments_dir().display(),
-            env_slug,
-            name
-        );
-        let wasm_filepath = format!("{}/{}.wasm", folder_filepath, name);
+        if name == crate::MANAGER {
+            anyhow::bail!("`{name}` is a reserved app name");
+        }
 
-        std::fs::create_dir_all(folder_filepath)?;
-        std::fs::write(&wasm_filepath, &bytes)?;
+        // disk write
+        let digest = self.registry.put(&bytes)?;
 
+        // Compile component
         let component = wasmtime::component::Component::from_binary(&self.engine, &bytes)?;
         let linker = Runtime::build_linker(&self.engine)?;
-        let pre = Some(wasmtime_wasi_http::p2::bindings::ProxyPre::new(
-            linker.instantiate_pre(&component)?,
-        )?);
+        let pre =
+            wasmtime_wasi_http::p2::bindings::ProxyPre::new(linker.instantiate_pre(&component)?)?;
 
         let mut db = self.db.lock().unwrap();
-        let mut app = db.add_app_to_environment(
-            NewApp {
-                name: name.clone(),
-                filepath: wasm_filepath,
-            },
-            &env_slug,
-        )?;
-
-        app.pre = pre;
+        let mut app: App = db
+            .add_app_to_environment(
+                NewApp {
+                    name: name.clone(),
+                    digest,
+                },
+                &env_slug,
+            )?
+            .into();
+        app.pre = Some(pre);
 
         let url = format!(
             "http://{}.{}.{}:{}",
@@ -102,7 +99,6 @@ impl Runtime {
         );
 
         self.app_store.lock().unwrap().insert(name, app);
-
         Ok(url)
     }
 }

@@ -2,15 +2,14 @@ use std::path::Path;
 
 use rusqlite::{params, Connection, Error};
 
-use crate::runtime::{App, NewApp};
+use crate::runtime::NewApp;
 pub struct Db {
     conn: Connection,
 }
 
 pub struct AppRow {
-    pub id: i64,
     pub name: String,
-    pub filepath: String,
+    pub digest: String,
 }
 
 impl Db {
@@ -30,7 +29,7 @@ impl Db {
         CREATE TABLE IF NOT EXISTS app (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            filepath TEXT NOT NULL UNIQUE
+            digest TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS environment_app (
@@ -45,25 +44,12 @@ impl Db {
         Ok(())
     }
 
-    pub fn seed_test_db(&mut self) -> Result<(), Error> {
-        self.conn.execute_batch(
-            "
-            INSERT OR IGNORE INTO app (name, filepath)
-        VALUES ('hello', 'target/wasm32-wasip2/release/hello.wasm');
-            INSERT OR IGNORE INTO app (name, filepath)
-        VALUES ('manager', 'target/wasm32-wasip2/release/manager.wasm');
-        ",
-        )?;
-        Ok(())
-    }
-
     pub fn get_apps(&self) -> Result<Vec<AppRow>, Error> {
-        let mut stmt = self.conn.prepare("SELECT id, name, filepath FROM app")?;
+        let mut stmt = self.conn.prepare("SELECT name, digest FROM app")?;
         stmt.query_map([], |row| {
             Ok(AppRow {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                filepath: row.get(2)?,
+                name: row.get(0)?,
+                digest: row.get(1)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()
@@ -87,13 +73,13 @@ impl Db {
         stmt.query_map([], |row| Ok(row.get(0)?))?.collect()
     }
 
-    pub fn add_app_to_environment(&mut self, app: NewApp, env: &str) -> Result<App, Error> {
+    pub fn add_app_to_environment(&mut self, app: NewApp, env: &str) -> Result<AppRow, Error> {
         let tx = self.conn.transaction()?;
         tx.execute(
             "
-            INSERT INTO app (name, filepath)
+            INSERT INTO app (name, digest)
             VALUES (?1, ?2)",
-            params![app.name, app.filepath],
+            params![app.name, app.digest],
         )?;
         let app_id = tx.last_insert_rowid();
         let env_id: i64 = tx.query_row(
@@ -108,11 +94,9 @@ impl Db {
 
         tx.commit()?;
 
-        Ok(App {
-            id: app_id,
+        Ok(AppRow {
             name: app.name,
-            filepath: app.filepath,
-            pre: None,
+            digest: app.digest,
         })
     }
 
@@ -141,42 +125,12 @@ impl Db {
     }
 
     pub fn create_environment(&mut self, domain_slug: &str) -> Result<(), Error> {
-        let tx = self.conn.transaction()?;
-
-        tx.execute(
+        self.conn.execute(
             "INSERT INTO environment (slug)
             VALUES (?1)",
             params![domain_slug],
         )?;
-        let env_id = tx.last_insert_rowid();
 
-        let manager_id: i64 = tx.query_row(
-            "SELECT id FROM app
-            WHERE name = ?1",
-            ["manager"],
-            |row| row.get(0),
-        )?;
-
-        let hello_id: i64 = tx.query_row(
-            "SELECT id FROM app
-            WHERE name = ?1",
-            ["hello"],
-            |row| row.get(0),
-        )?;
-
-        tx.execute(
-            "INSERT INTO environment_app (environment_id, app_id)
-            VALUES (?1, ?2)",
-            params![env_id, manager_id],
-        )?;
-
-        tx.execute(
-            "INSERT INTO environment_app (environment_id, app_id)
-            VALUES (?1, ?2)",
-            params![env_id, hello_id],
-        )?;
-
-        tx.commit()?;
         Ok(())
     }
 }
@@ -185,22 +139,21 @@ impl Db {
 mod test {
     use super::*;
 
-    fn count_env_table_entries(db: &Db) -> Result<i64, Error> {
-        let sql = "SELECT COUNT(*) FROM environment_app";
-        db.conn.query_row(sql, [], |row| row.get(0))
+    fn count_env_app_links(db: &Db) -> Result<i64, Error> {
+        db.conn
+            .query_row("SELECT COUNT(*) FROM environment_app", [], |row| row.get(0))
     }
 
     #[test]
     fn can_create_new_env() -> anyhow::Result<()> {
         let mut db = Db::open(":memory:")?;
         db.init_schema()?;
-        db.seed_test_db()?;
 
-        assert_eq!(count_env_table_entries(&db)?, 0);
+        db.create_environment("fake_slug")?;
 
-        db.create_environment(&"fake_slug")?;
-
-        assert_eq!(count_env_table_entries(&db)?, 2);
+        assert!(db.env_exists("fake_slug"));
+        // Manager is implicit: creating an environment links no app rows.
+        assert_eq!(count_env_app_links(&db)?, 0);
 
         Ok(())
     }
@@ -209,15 +162,44 @@ mod test {
     fn return_list_of_app_names() -> anyhow::Result<()> {
         let mut db = Db::open(":memory:")?;
         db.init_schema()?;
-        db.seed_test_db()?;
-        assert_eq!(db.get_app_names()?, vec!["hello", "manager"]);
+        db.create_environment("test-env")?;
+
+        db.add_app_to_environment(
+            NewApp {
+                name: "bookshelf".into(),
+                digest: "d1".into(),
+            },
+            "test-env",
+        )?;
+        db.add_app_to_environment(
+            NewApp {
+                name: "analytics".into(),
+                digest: "d2".into(),
+            },
+            "test-env",
+        )?;
+
+        assert_eq!(db.get_app_names()?, vec!["analytics", "bookshelf"]);
         Ok(())
     }
 
-    // TODO: Complete test once add_app_to_env exists
-    // fn can_tell_if_app_exists() -> () {
-    //     let db = Db::open(":memory:")?;
-    //     db.init_schema()?;
-    //     todo!();
-    // }
+    #[test]
+    fn add_app_stores_digest_and_links_environment() -> anyhow::Result<()> {
+        let mut db = Db::open(":memory:")?;
+        db.init_schema()?;
+        db.create_environment("test-env")?;
+
+        let app = db.add_app_to_environment(
+            NewApp {
+                name: "bookshelf".into(),
+                digest: "d1".into(),
+            },
+            "test-env",
+        )?;
+
+        assert_eq!(app.digest, "d1");
+        assert!(db.app_exists("test-env", "bookshelf"));
+        assert_eq!(db.get_apps()?[0].digest, "d1");
+        Ok(())
+    }
 }
