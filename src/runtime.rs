@@ -50,9 +50,9 @@ impl Runtime {
         Ok(linker)
     }
 
-    pub fn list_apps(&self) -> Result<Vec<String>, rusqlite::Error> {
+    pub fn list_env_apps(&self, env_slug: &str) -> Result<Vec<String>, rusqlite::Error> {
         let db = self.db.lock().unwrap();
-        db.get_app_names()
+        db.get_env_apps(env_slug)
     }
 
     pub fn get_domain(&self, env_slug: &str) -> String {

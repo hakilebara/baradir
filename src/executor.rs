@@ -195,7 +195,7 @@ pub struct ManagerInstanceState {
 impl crate::wit::bindings::ManagerAppImports for ManagerInstanceState {
     fn list_apps(&mut self) -> Vec<String> {
         self.runtime
-            .list_apps()
+            .list_env_apps(&self.env_slug)
             .expect("should return the list of app names")
     }
 

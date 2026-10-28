@@ -55,17 +55,17 @@ impl Db {
         .collect::<Result<Vec<_>, _>>()
     }
 
-    pub fn get_app_names(&self) -> Result<Vec<String>, Error> {
-        let mut names = vec![];
+    pub fn get_env_apps(&self, env_slug: &str) -> Result<Vec<String>, Error> {
         let mut stmt = self.conn.prepare(
-            "SELECT name FROM app
-                ORDER BY name",
+            "SELECT a.name
+            FROM app a
+            JOIN environment_app ea ON a.id = ea.app_id
+            JOIN environment e ON e.id = ea.environment_id
+            WHERE e.slug = ?1
+            ORDER BY a.name;",
         )?;
-        let mut rows = stmt.query([])?;
-        while let Some(row) = rows.next()? {
-            names.push(row.get(0)?);
-        }
-        Ok(names)
+        stmt.query_map(params![env_slug], |row| Ok(row.get(0)?))?
+            .collect::<Result<Vec<_>, _>>()
     }
 
     pub fn get_env_slugs(&self) -> Result<Vec<String>, Error> {
@@ -179,7 +179,8 @@ mod test {
             "test-env",
         )?;
 
-        assert_eq!(db.get_app_names()?, vec!["analytics", "bookshelf"]);
+        assert!(db.get_env_apps("fake-env")?.is_empty());
+        assert_eq!(db.get_env_apps("test-env")?, vec!["analytics", "bookshelf"]);
         Ok(())
     }
 
